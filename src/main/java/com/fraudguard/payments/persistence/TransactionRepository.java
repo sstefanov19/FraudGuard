@@ -21,6 +21,7 @@ public interface TransactionRepository extends JpaRepository<TransactionEntity, 
                 from transactions
                 where account_id = :accountId
                   and id <> :excludeId
+                  and currency = :currency
                 order by created_at desc
                 limit :limit
             ) recent
@@ -28,6 +29,7 @@ public interface TransactionRepository extends JpaRepository<TransactionEntity, 
     BigDecimal trailingAverage(
             @Param("accountId") String accountId,
             @Param("excludeId") String excludeId,
+            @Param("currency") String currency,
             @Param("limit") int limit);
 
     @Query("""
@@ -35,10 +37,12 @@ public interface TransactionRepository extends JpaRepository<TransactionEntity, 
             from TransactionEntity t
             where t.details.accountId = :accountId
               and t.id <> :excludeId
+              and t.details.currency = :currency
             """)
-    long priorCount(@Param("accountId") String accountId, @Param("excludeId") String excludeId);
+    long priorCount(
+            @Param("accountId") String accountId,
+            @Param("excludeId") String excludeId,
+            @Param("currency") String currency);
 
     boolean existsByDetailsAccountIdAndDetailsDeviceIdAndIdNot(String accountId, String deviceId, String id);
-
-    long countByDetailsAccountId(String accountId);
 }

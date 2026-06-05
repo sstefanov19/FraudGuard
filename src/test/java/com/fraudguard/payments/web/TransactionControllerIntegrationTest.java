@@ -81,6 +81,98 @@ class TransactionControllerIntegrationTest {
         assertThat(transactions.count()).isEqualTo(1);
     }
 
+    @Test
+    void amount_with_more_decimals_than_the_currency_allows_is_rejected_as_400_without_persisting() {
+        // WHY: 50.999 USD would make Money's RoundingMode.UNNECESSARY throw; that must surface as a
+        // client 400, not a 500, and must not leave a half-written transaction row behind.
+        Map<String, Object> body = request("acct_overscale", "device_overscale", "50.999");
+
+        ResponseEntity<String> response = rest.postForEntity(
+                "/transactions",
+                new HttpEntity<>(body, headers("idem_overscale")),
+                String.class);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(transactions.count()).isZero();
+    }
+
+    @Test
+    void bean_validation_failure_returns_the_same_error_contract_as_the_amount_check() {
+        // WHY: the API must speak one error dialect; a bad request body and an over-precise amount
+        // both come back as the ErrorResponse shape, not Spring's default error JSON.
+        Map<String, Object> body = request("acct_invalid", "device_invalid", "50.00");
+        body.put("currency", "US"); // fails @Pattern("[A-Z]{3}")
+
+        ResponseEntity<ErrorResponse> response = rest.postForEntity(
+                "/transactions",
+                new HttpEntity<>(body, headers("idem_invalid")),
+                ErrorResponse.class);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().status()).isEqualTo(400);
+        assertThat(response.getBody().message()).contains("currency");
+        assertThat(transactions.count()).isZero();
+    }
+
+    @Test
+    void unsupported_currency_code_is_rejected_as_400_not_500() {
+        // WHY: "ZZZ" passes the [A-Z]{3} pattern but Currency.getInstance rejects it; that must come
+        // back as a client 400, not an IllegalArgumentException surfacing as a 500.
+        Map<String, Object> body = request("acct_badccy", "device_badccy", "50.00");
+        body.put("currency", "ZZZ");
+
+        ResponseEntity<ErrorResponse> response = rest.postForEntity(
+                "/transactions",
+                new HttpEntity<>(body, headers("idem_badccy")),
+                ErrorResponse.class);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().message()).contains("ZZZ");
+        assertThat(transactions.count()).isZero();
+    }
+
+    @Test
+    void oversized_field_returns_400_not_500_when_it_exceeds_the_column_limit() {
+        // WHY: a value longer than its DB column (account_id VARCHAR(128)) must be rejected as a
+        // client 400, not blow up as a DataIntegrityViolationException surfacing as a 500.
+        Map<String, Object> body = request("a".repeat(129), "device_oversized", "50.00");
+
+        ResponseEntity<ErrorResponse> response = rest.postForEntity(
+                "/transactions",
+                new HttpEntity<>(body, headers("idem_oversized")),
+                ErrorResponse.class);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().message()).contains("accountId");
+        assertThat(transactions.count()).isZero();
+    }
+
+    @Test
+    void oversized_idempotency_key_header_returns_400_via_the_same_error_contract() {
+        // WHY: the Idempotency-Key header has its own column limit (VARCHAR(255)); an over-long key
+        // must fail as a 400 ErrorResponse, the same dialect as body validation, not a 500.
+        Map<String, Object> body = request("acct_idem_long", "device_idem_long", "50.00");
+
+        ResponseEntity<ErrorResponse> response = rest.postForEntity(
+                "/transactions",
+                new HttpEntity<>(body, headers("k".repeat(256))),
+                ErrorResponse.class);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().status()).isEqualTo(400);
+        assertThat(transactions.count()).isZero();
+    }
+
+    private HttpHeaders headers(String idempotencyKey) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.set("Idempotency-Key", idempotencyKey);
+        return headers;
+    }
+
     private TransactionResponse post(String idempotencyKey, Map<String, Object> request) {
         HttpHeaders headers = new HttpHeaders();
         headers.set("Idempotency-Key", idempotencyKey);

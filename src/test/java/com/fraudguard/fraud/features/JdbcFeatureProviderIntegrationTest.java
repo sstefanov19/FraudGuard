@@ -85,17 +85,40 @@ class JdbcFeatureProviderIntegrationTest {
         assertThat(featureProvider.load(knownDevice).newDevice()).isFalse();
     }
 
+    @Test
+    void amount_history_is_scoped_to_the_current_transactions_currency() {
+        // WHY: averaging raw amounts across currencies (100 JPY + 100 USD) yields a meaningless
+        // baseline that AmountAnomalyRule would trust; both the average AND the prior-count that
+        // gates the rule (minHistory) must be scoped to one currency, matching Money's refusal to
+        // compare across currencies. The EUR row must influence neither.
+        Instant now = Instant.parse("2026-06-04T10:00:00Z");
+        save(tx("tx_usd_1", "acct_fx", "device_a", "10.00", "USD", now.minusSeconds(300)));
+        save(tx("tx_usd_2", "acct_fx", "device_b", "30.00", "USD", now.minusSeconds(200)));
+        save(tx("tx_eur_big", "acct_fx", "device_c", "9999.00", "EUR", now.minusSeconds(100)));
+        Transaction current = tx("tx_current", "acct_fx", "device_d", "50.00", "USD", now);
+        save(current);
+
+        FeatureSnapshot features = featureProvider.load(current);
+
+        assertThat(features.trailingAverageAmount()).isEqualTo(Money.of("20.00", "USD"));
+        assertThat(features.priorTransactionCount()).isEqualTo(2);
+    }
+
     private void save(Transaction transaction) {
         transactions.saveAndFlush(TransactionEntity.fromDomain(transaction));
     }
 
     private Transaction tx(String id, String accountId, String deviceId, String amount, Instant createdAt) {
+        return tx(id, accountId, deviceId, amount, "USD", createdAt);
+    }
+
+    private Transaction tx(String id, String accountId, String deviceId, String amount, String currency, Instant createdAt) {
         return new Transaction(
                 id,
                 "idem_" + id,
                 accountId,
                 "card_" + accountId,
-                Money.of(amount, "USD"),
+                Money.of(amount, currency),
                 "Test Merchant",
                 "retail",
                 "203.0.113.7",

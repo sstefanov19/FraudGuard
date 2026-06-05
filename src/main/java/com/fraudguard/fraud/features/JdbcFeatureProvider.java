@@ -38,11 +38,15 @@ public class JdbcFeatureProvider implements FeatureProvider {
                 transaction.accountId(), transaction.createdAt().minus(minuteWindow)));
         int lastHour = Math.toIntExact(transactions.countByDetailsAccountIdAndDetailsCreatedAtAfter(
                 transaction.accountId(), transaction.createdAt().minus(hourWindow)));
-        int priorCount = Math.toIntExact(transactions.priorCount(transaction.accountId(), transaction.id()));
+        int priorCount = Math.toIntExact(transactions.priorCount(
+                transaction.accountId(), transaction.id(), transaction.amount().currency().getCurrencyCode()));
         boolean seenDevice = transactions.existsByDetailsAccountIdAndDetailsDeviceIdAndIdNot(
                 transaction.accountId(), transaction.deviceId(), transaction.id());
         BigDecimal average = transactions.trailingAverage(
-                transaction.accountId(), transaction.id(), trailingWindowSize);
+                transaction.accountId(),
+                transaction.id(),
+                transaction.amount().currency().getCurrencyCode(),
+                trailingWindowSize);
 
         return new FeatureSnapshotBuilder()
                 .txnCountLastMinute(lastMinute)

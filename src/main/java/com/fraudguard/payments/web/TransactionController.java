@@ -2,6 +2,7 @@ package com.fraudguard.payments.web;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.validation.annotation.Validated;
@@ -24,7 +25,7 @@ public class TransactionController {
     @PostMapping("/transactions")
     @ResponseStatus(HttpStatus.CREATED)
     public TransactionResponse create(
-            @RequestHeader("Idempotency-Key") @NotBlank String idempotencyKey,
+            @RequestHeader("Idempotency-Key") @NotBlank @Size(max = 255) String idempotencyKey,
             @Valid @RequestBody CreateTransactionRequest request) {
         return transactionService.create(idempotencyKey, request);
     }
