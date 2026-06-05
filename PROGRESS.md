@@ -49,6 +49,17 @@ blocklist flags to `false`, so `GeoMismatchRule` and `BlocklistRule` are dormant
 wired API until accounts/blocklist tables land later. Their unit tests still exercise those
 rules directly.
 
+Known limitation: risk factors are not persisted, so an idempotent replay (`POST /transactions`
+with a previously-seen `Idempotency-Key`) returns the stored decision/score/degraded flag but an
+empty `factors` list. The first response carries the full explanation; retries do not. Persisting
+factors for full replay explainability is deferred to a later step.
+
+Known limitation: velocity counting is correct only for serialized same-account requests. Scoring
+runs at the default READ COMMITTED isolation, so a burst fired in parallel can have each request
+count only itself and slip under the velocity threshold. The card-testing test proves the guarantee
+sequentially; concurrency-hardening (per-account advisory lock or SERIALIZABLE + retry) is tracked
+in TODOS.md.
+
 ## Step 1 — DONE (verified `mvn test`, 33 tests, 0 failures)
 
 The decision engine, built as pure logic with no database so it could be fully unit-tested:
