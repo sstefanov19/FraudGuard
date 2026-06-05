@@ -15,6 +15,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.Optional;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -38,7 +39,7 @@ class TransactionServiceTest {
         when(transactions.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
         when(featureProvider.load(any())).thenThrow(new RuntimeException("database unavailable"));
         TransactionService service = new TransactionService(
-                transactions, featureProvider, scoringService, clock, immediateTransactions());
+                transactions, featureProvider, scoringService, clock, immediateTransactions(), Set.of("USD"));
 
         TransactionResponse response = service.create("idem_feature_down", request());
 

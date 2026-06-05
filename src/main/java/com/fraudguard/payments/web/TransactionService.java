@@ -11,10 +11,14 @@ import com.fraudguard.payments.persistence.TransactionRepository;
 
 import java.time.Clock;
 import java.util.Currency;
+import java.util.Locale;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionOperations;
@@ -29,18 +33,23 @@ public class TransactionService {
     private final ScoringService scoringService;
     private final Clock clock;
     private final TransactionOperations transactionOperations;
+    private final Set<String> supportedCurrencies;
 
     public TransactionService(
             TransactionRepository transactions,
             FeatureProvider featureProvider,
             ScoringService scoringService,
             Clock clock,
-            TransactionOperations transactionOperations) {
+            TransactionOperations transactionOperations,
+            @Value("${fraud.supported-currencies:USD}") Set<String> supportedCurrencies) {
         this.transactions = transactions;
         this.featureProvider = featureProvider;
         this.scoringService = scoringService;
         this.clock = clock;
         this.transactionOperations = transactionOperations;
+        this.supportedCurrencies = supportedCurrencies.stream()
+                .map(c -> c.trim().toUpperCase(Locale.ROOT))
+                .collect(Collectors.toUnmodifiableSet());
     }
 
     public TransactionResponse create(String idempotencyKey, CreateTransactionRequest request) {
@@ -117,12 +126,18 @@ public class TransactionService {
     }
 
     /**
-     * Reject money values {@link Money} cannot accept with a 400 instead of letting its unchecked
-     * exceptions surface as a 500: an unsupported currency code (passes the [A-Z]{3} pattern but is
-     * not a real ISO 4217 code, e.g. "ZZZ"), or more fraction digits than the currency supports
-     * (e.g. 50.999 USD). Trailing zeros are stripped first so 50.990 USD stays valid.
+     * Reject money values the engine cannot honor with a 400 instead of a 500 (or a fake "scoring
+     * outage"): a currency outside {@code supportedCurrencies} (the wired rules use a fixed-USD
+     * threshold, so a non-USD amount would throw on cross-currency comparison and degrade to REVIEW),
+     * a non-ISO currency code (passes the [A-Z]{3} pattern but is not real, e.g. "ZZZ"), or more
+     * fraction digits than the currency supports (e.g. 50.999 USD). Trailing zeros are stripped first
+     * so 50.990 USD stays valid.
      */
     private void requireSupportedMoney(CreateTransactionRequest request) {
+        if (!supportedCurrencies.contains(request.currency())) {
+            throw new InvalidMoneyException(
+                    "unsupported currency " + request.currency() + "; supported: " + supportedCurrencies);
+        }
         Currency currency;
         try {
             currency = Currency.getInstance(request.currency());

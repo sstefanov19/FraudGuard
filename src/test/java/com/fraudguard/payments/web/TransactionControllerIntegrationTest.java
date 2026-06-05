@@ -11,6 +11,7 @@ import org.springframework.boot.testcontainers.service.connection.ServiceConnect
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
@@ -130,6 +131,55 @@ class TransactionControllerIntegrationTest {
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
         assertThat(response.getBody()).isNotNull();
         assertThat(response.getBody().message()).contains("ZZZ");
+        assertThat(transactions.count()).isZero();
+    }
+
+    @Test
+    void non_usd_currency_is_rejected_as_400_not_silently_degraded() {
+        // WHY: the wired rules use a fixed-USD threshold, so a non-USD amount throws on cross-currency
+        // comparison and the engine degrades to a fake REVIEW. The API must reject it up front as 400.
+        Map<String, Object> body = request("acct_eur", "device_eur", "50.00");
+        body.put("currency", "EUR");
+
+        ResponseEntity<ErrorResponse> response = rest.postForEntity(
+                "/transactions",
+                new HttpEntity<>(body, headers("idem_eur")),
+                ErrorResponse.class);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().message()).contains("EUR");
+        assertThat(transactions.count()).isZero();
+    }
+
+    @Test
+    void missing_idempotency_key_header_returns_the_error_contract() {
+        // WHY: omitting the header raises MissingRequestHeaderException before @NotBlank runs; the
+        // client must still get the ErrorResponse shape, not Spring's default error body.
+        Map<String, Object> body = request("acct_nohdr", "device_nohdr", "50.00");
+
+        ResponseEntity<ErrorResponse> response = rest.postForEntity(
+                "/transactions", new HttpEntity<>(body), ErrorResponse.class);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().status()).isEqualTo(400);
+        assertThat(transactions.count()).isZero();
+    }
+
+    @Test
+    void malformed_json_body_returns_the_error_contract() {
+        // WHY: an unreadable body raises HttpMessageNotReadableException; it must map to the same
+        // 400 ErrorResponse dialect as every other client-input error.
+        HttpHeaders headers = headers("idem_malformed");
+        headers.setContentType(MediaType.APPLICATION_JSON);
+
+        ResponseEntity<ErrorResponse> response = rest.postForEntity(
+                "/transactions", new HttpEntity<>("{not valid json", headers), ErrorResponse.class);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().status()).isEqualTo(400);
         assertThat(transactions.count()).isZero();
     }
 

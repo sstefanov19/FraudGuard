@@ -49,6 +49,18 @@ sequence as a later upgrade, not an oversight. Order roughly reflects when to pi
   SERIALIZABLE isolation with retry-on-serialization-failure. Add a concurrency test that
   fires N parallel same-account charges and asserts the burst still blocks.
 
+## Currency-aware rule thresholds (multi-currency support)
+- **What:** Make fixed-threshold rules hold a per-currency threshold instead of one hardcoded USD
+  value. Today `NewDeviceHighValueRule` is wired with `Money.of("1000.00", "USD")` and compares it
+  against every transaction amount, so any non-USD amount throws on cross-currency comparison and the
+  engine degrades to REVIEW. The API now rejects non-USD up front (allowlist `fraud.supported-currencies`,
+  default `USD`); this TODO is the real fix that lets the engine score non-USD natively.
+- **Why:** Unblocks genuine multi-currency traffic; removes the "we advertise ISO currencies but only
+  USD works" gap.
+- **Depends on:** A per-currency threshold config (and likely FX or per-currency tuning).
+- **Where to start:** Give `NewDeviceHighValueRule` a `Map<Currency, Money>` of thresholds (or resolve
+  the threshold by the transaction's currency); then widen the allowlist as each currency is tuned.
+
 ## REVIEW case-management queue UI
 - **What:** Analyst screen listing IN_REVIEW transactions with approve/block actions.
 - **Why:** Completes the fail-to-REVIEW story; realistic fraud-ops feature.
