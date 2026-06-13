@@ -12,16 +12,16 @@ import jakarta.validation.constraints.Size;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
-import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 @Validated
 @RestController
-@Tag(name = "Transactions")
+@Tag(name = "Transaction")
 public class TransactionController {
 
     private final TransactionService transactionService;
@@ -30,11 +30,8 @@ public class TransactionController {
         this.transactionService = transactionService;
     }
 
-    @PostMapping(value = "/transactions", produces = MediaType.APPLICATION_JSON_VALUE)
-    @ResponseStatus(HttpStatus.CREATED)
-    @Operation(
-            summary = "Score a payment authorization",
-            description = "Persists the authorization, computes fraud features, stores the decision, and returns an explanation.")
+    @PostMapping("/transactions")
+    @Operation(summary = "Score a payment authorization", description = "Persists the authorization, computes fraud features, stores the decision, and returns an explanation.")
     @ApiResponse(
             responseCode = "201",
             description = "Transaction scored",
@@ -47,14 +44,9 @@ public class TransactionController {
             content = @Content(
                     mediaType = MediaType.APPLICATION_JSON_VALUE,
                     schema = @Schema(implementation = ErrorResponse.class)))
-    public TransactionResponse create(
-            @Parameter(
-                    description = "Client-generated key used to dedupe payment retries.",
-                    required = true,
-                    schema = @Schema(minLength = 1, maxLength = 255),
-                    example = "auth_20260605_000001")
-            @RequestHeader("Idempotency-Key") @NotBlank @Size(max = 255) String idempotencyKey,
+    public ResponseEntity<TransactionResponse> create(
+            @Parameter(description = "Client-generated key used to dedupe payment retries.", required = true, schema = @Schema(minLength = 1, maxLength = 255), example = "auth_20260605_000001") @RequestHeader("Idempotency-Key") @NotBlank @Size(max = 255) String idempotencyKey,
             @Valid @RequestBody CreateTransactionRequest request) {
-        return transactionService.create(idempotencyKey, request);
+        return ResponseEntity.status(HttpStatus.CREATED).body(transactionService.create(idempotencyKey, request));
     }
 }
