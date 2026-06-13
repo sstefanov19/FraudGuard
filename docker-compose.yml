@@ -1,0 +1,35 @@
+# Local dev broker for Step 3 streaming. NOT used by tests — TransactionStreamingIT
+# spins its own Redpanda via Testcontainers. This is for `mvn spring-boot:run` +
+# watching events on fraud.decisions.v1. Single node, dev mode, no persistence guarantees.
+services:
+  redpanda:
+    image: redpandadata/redpanda:v24.2.7
+    container_name: fraudguard-redpanda
+    command:
+      - redpanda
+      - start
+      - --mode dev-container          # single-node dev defaults
+      - --smp 1
+      - --default-log-level=info
+      # PLAINTEXT listener = in-network (console); EXTERNAL = host apps (localhost:9092)
+      - --kafka-addr PLAINTEXT://0.0.0.0:29092,EXTERNAL://0.0.0.0:9092
+      - --advertise-kafka-addr PLAINTEXT://redpanda:29092,EXTERNAL://localhost:9092
+    ports:
+      - "9092:9092"    # Kafka API — point spring.kafka.bootstrap-servers here
+      - "9644:9644"    # Admin/metrics
+    healthcheck:
+      test: ["CMD-SHELL", "rpk cluster health | grep -q 'Healthy:.*true'"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  console:
+    image: redpandadata/console:v2.7.2
+    container_name: fraudguard-redpanda-console
+    depends_on:
+      redpanda:
+        condition: service_healthy
+    ports:
+      - "8085:8080"    # http://localhost:8085 — 8085 avoids clashing with the app on 8080
+    environment:
+      KAFKA_BROKERS: redpanda:29092

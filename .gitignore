@@ -5,3 +5,5 @@
 
 src/main/resources/application.properties
 /plans
+
+.idea
