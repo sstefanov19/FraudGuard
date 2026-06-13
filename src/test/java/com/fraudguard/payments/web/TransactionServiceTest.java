@@ -5,6 +5,7 @@ import com.fraudguard.fraud.ScoringService;
 import com.fraudguard.fraud.features.FeatureProvider;
 import com.fraudguard.payments.persistence.TransactionRepository;
 import org.junit.jupiter.api.Test;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.transaction.TransactionStatus;
 import org.springframework.transaction.support.SimpleTransactionStatus;
 import org.springframework.transaction.support.TransactionCallback;
@@ -39,7 +40,8 @@ class TransactionServiceTest {
         when(transactions.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
         when(featureProvider.load(any())).thenThrow(new RuntimeException("database unavailable"));
         TransactionService service = new TransactionService(
-                transactions, featureProvider, scoringService, clock, immediateTransactions(), Set.of("USD"));
+                transactions, featureProvider, scoringService, clock, immediateTransactions(),
+                mock(ApplicationEventPublisher.class), Set.of("USD"));
 
         TransactionResponse response = service.create("idem_feature_down", request());
 
