@@ -21,7 +21,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 @Validated
 @RestController
-@Tag(name = "Transaction")
+@Tag(name = "Transactions")
 public class TransactionController {
 
     private final TransactionService transactionService;
