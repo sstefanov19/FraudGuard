@@ -4,6 +4,7 @@ import com.fraudguard.fraud.FeatureSnapshot;
 import com.fraudguard.fraud.FraudDecision;
 import com.fraudguard.fraud.ScoringService;
 import com.fraudguard.fraud.features.FeatureProvider;
+import com.fraudguard.kafka.FraudDecisionRecorded;
 import com.fraudguard.payments.domain.Money;
 import com.fraudguard.payments.domain.Transaction;
 import com.fraudguard.payments.persistence.TransactionEntity;
@@ -19,6 +20,7 @@ import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionOperations;
@@ -33,6 +35,7 @@ public class TransactionService {
     private final ScoringService scoringService;
     private final Clock clock;
     private final TransactionOperations transactionOperations;
+    private final ApplicationEventPublisher events;
     private final Set<String> supportedCurrencies;
 
     public TransactionService(
@@ -41,12 +44,14 @@ public class TransactionService {
             ScoringService scoringService,
             Clock clock,
             TransactionOperations transactionOperations,
+            ApplicationEventPublisher events,
             @Value("${fraud.supported-currencies:USD}") Set<String> supportedCurrencies) {
         this.transactions = transactions;
         this.featureProvider = featureProvider;
         this.scoringService = scoringService;
         this.clock = clock;
         this.transactionOperations = transactionOperations;
+        this.events = events;
         this.supportedCurrencies = supportedCurrencies.stream()
                 .map(c -> c.trim().toUpperCase(Locale.ROOT))
                 .collect(Collectors.toUnmodifiableSet());
@@ -84,6 +89,8 @@ public class TransactionService {
         FraudDecision decision = scoringService.decide(transaction, features);
         entity.applyDecision(decision);
         transactions.save(entity);
+        // Registered inside the txn; AFTER_COMMIT publishes it only once this commits.
+        events.publishEvent(new FraudDecisionRecorded(transaction, decision));
         return TransactionResponse.from(transaction.id(), decision);
     }
 
@@ -104,6 +111,7 @@ public class TransactionService {
             FraudDecision decision = FraudDecision.degradedReview(clock.instant());
             entity.applyDecision(decision);
             transactions.saveAndFlush(entity);
+            events.publishEvent(new FraudDecisionRecorded(transaction, decision));
             return TransactionResponse.from(transaction.id(), decision);
         });
     }

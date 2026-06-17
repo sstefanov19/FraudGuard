@@ -4,3 +4,20 @@ springdoc:
   swagger-ui:
     enabled: true
     path: /swagger-ui.html
+
+spring:
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      acks: all
+      retries: 3
+      properties:
+        # Don't stamp the Java FQCN onto the wire — the event is a language-neutral JSON contract.
+        spring.json.add.type.headers: false
+
+fraud:
+  kafka:
+    topic: fraud.decisions.v1
+    partitions: 3
